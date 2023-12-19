@@ -8,3 +8,5 @@ pub mod run;
 pub mod constants;
 #[cfg(test)]
 pub mod test;
+#[cfg(test)]
+mod bls_test;
