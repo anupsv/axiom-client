@@ -9,8 +9,8 @@ edition = "2021"
 axiom-eth = { git = "https://github.com/axiom-crypto/axiom-eth-working.git", branch = "v2-spearbit-audit-improvements" }
 axiom-codec = { git = "https://github.com/axiom-crypto/axiom-eth-working.git", branch = "v2-spearbit-audit-improvements" }
 #halo2-base = { git = "https://github.com/axiom-crypto/halo2-lib.git", package = "halo2-base", branch = "develop" }
-halo2-ecc = { git = "https://github.com/axiom-crypto/halo2-lib.git", package = "halo2-ecc", branch = "develop", default-features = false }
-halo2_proofs_axiom = { version = "0.4", package = "halo2-axiom", optional = true }
+halo2-ecc = { git = "https://github.com/axiom-crypto/halo2-lib.git", package = "halo2-ecc", branch = "release-0.4.1-rc" }
+#halo2_proofs_axiom = { version = "0.4", package = "halo2-axiom", optional = true }
 
 ethers = "2.0"
 anyhow = "1.0.75"

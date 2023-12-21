@@ -12,7 +12,7 @@ use axiom_eth::{
     },
     halo2curves::bn256::Fr,
     halo2curves::bn256::G1Affine,
-    halo2curves::bn256::G2Affine,
+    halo2curves::{bn256::G2Affine, serde::SerdeObject},
     halo2curves::ff::PrimeField,
     rlc::circuit::builder::RlcCircuitBuilder,
     Field,
@@ -85,7 +85,7 @@ impl RawCircuitInput<Fr, MyCircuitVirtualInput<Fr>> for MyCircuitInput {
 }
 
 
-pub fn encode_slot_to_lo_hi(slot: &Fr) -> (Fr, Fr) {
+pub fn encode_slot_to_lo_hi(slot: &[u8; 32]) -> (Fr, Fr) {
     let lo = u128::from_be_bytes(slot[16..].try_into().unwrap());
     let hi = u128::from_be_bytes(slot[..16].try_into().unwrap());
     (Fr::from_u128(lo), Fr::from_u128(hi))
@@ -116,7 +116,7 @@ impl<P: JsonRpcClient> AxiomCircuitScaffold<P, Fr> for MyCircuit {
         let task_response_digest_g2coords = G2Affine::from_raw_bytes(&inputs.task_response_digest_g2coords).unwrap();
         let agg_sig_g2coords = G2Affine::from_raw_bytes(&inputs.agg_sig_g2coords).unwrap();
 
-        let slot_lo_hi = encode_slot_to_lo_hi(inputs.operator_to_g1_pubkey_x_slot.value());
+        let slot_lo_hi = encode_slot_to_lo_hi(&inputs.operator_to_g1_pubkey_x_slot.value().to_bytes());
         let slot_lo_loaded = builder.base.borrow_mut().main(0).load_witness(slot_lo_hi.0);
         let slot_hi_loaded = builder.base.borrow_mut().main(0).load_witness(slot_lo_hi.1);
         
@@ -129,13 +129,13 @@ impl<P: JsonRpcClient> AxiomCircuitScaffold<P, Fr> for MyCircuit {
             },
         };
 
-        let subquery = AssignedHeaderSubquery {
-            block_number,
-            field_idx,
-        };
-        let timestamp = subquery_caller.call(builder.base.borrow_mut().main(0), subquery);
-        callback.push(timestamp);
-        dbg!(timestamp.lo().value());
+        // let subquery = AssignedHeaderSubquery {
+        //     block_number,
+        //     field_idx,
+        // };
+        // let timestamp = subquery_caller.call(builder.base.borrow_mut().main(0), subquery);
+        // callback.push(timestamp);
+        // dbg!(timestamp.lo().value());
     }
 }
 
