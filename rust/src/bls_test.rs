@@ -1,4 +1,4 @@
-use std::{borrow::BorrowMut, env, process::exit};
+use std::{borrow::{BorrowMut, Borrow}, env, process::exit};
 use ark_std::{start_timer, end_timer};
 
 use crate::{
@@ -172,7 +172,7 @@ impl<P: JsonRpcClient> AxiomCircuitScaffold<P, Fr> for MyCircuit {
         let fq2_chip = Fp2Chip::new(&fq_chip);
         let pairing_chip = PairingChip::new(&fq_chip);
 
-        let gate = GateChip::<Fr>::new();
+        // let gate = GateChip::<Fr>::new();
         let g1_chip = EccChip::new(&fq_chip);
         let g2_chip = EccChip::new(&fq2_chip);
 
@@ -201,11 +201,11 @@ impl<P: JsonRpcClient> AxiomCircuitScaffold<P, Fr> for MyCircuit {
         );
 
         let fq12_chip = Fp12Chip::new(&fq_chip);
-        // let result = fq12_chip.final_exp(builder.base.borrow_mut().main(0), multi_paired);
+        let result = fq12_chip.final_exp(builder.base.borrow_mut().main(0), multi_paired);
         let fq12_one = fq12_chip.load_constant(builder.base.borrow_mut().main(0), Fq12::one());
-        // let _verification_result = fq12_chip.is_equal(builder.base.borrow_mut().main(0), result, fq12_one);
-        // // verification_result.cell.unwrap().offset
-        // dbg!(_verification_result.value());
+        let _verification_result = fq12_chip.is_equal(builder.base.borrow_mut().main(0), result, fq12_one);
+        // verification_result.cell.unwrap().offset
+        dbg!(_verification_result.value());
 
         // let slot_lo_hi = encode_slot_to_lo_hi(&inputs.operator_to_g1_pubkey_x_slot.value().to_bytes());
         // let slot_lo_loaded = builder.base.borrow_mut().main(0).load_witness(slot_lo_hi.0);
@@ -226,7 +226,8 @@ impl<P: JsonRpcClient> AxiomCircuitScaffold<P, Fr> for MyCircuit {
         // };
         // let timestamp = subquery_caller.call(builder.base.borrow_mut().main(0), subquery);
         // callback.push(timestamp);
-        // dbg!(timestamp.lo().value());
+        // dbg!(builder.calculate_params(Some(20)));
+        dbg!(builder.calculate_params(Some(20)));
     }
 }
 
