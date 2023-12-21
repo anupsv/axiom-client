@@ -8,7 +8,7 @@ use axiom_eth::{
     halo2_base::{utils::fs::gen_srs, gates::circuit::BaseCircuitParams},
     halo2_proofs::{
         dev::MockProver,
-        plonk::{keygen_pk, keygen_vk, ProvingKey},
+        plonk::{keygen_pk, keygen_vk, ProvingKey, Circuit},
         SerdeFormat,
     },
     halo2curves::bn256::{Fr, G1Affine}, snark_verifier_sdk::halo2::gen_snark_shplonk,
@@ -62,5 +62,8 @@ pub fn prove<P: JsonRpcClient + Clone, S: AxiomCircuitScaffold<P, Fr>>(
 ) {
     let params = gen_srs(circuit_params.k as u32);
     let runner = AxiomCircuitRunner::new(circuit, provider, circuit_params, num_rlc_columns, None);
+    // let new_params = runner.params();
+    println!("calculated: {:?}", runner.params());
+    // runner.builder.borrow_mut().use_params(calculated);
     gen_snark_shplonk(&params, &pk, runner, None::<&str>);
 }
