@@ -1,4 +1,4 @@
-use std::{borrow::{BorrowMut, Borrow}, env, process::exit};
+use std::{borrow::{BorrowMut, Borrow}, vec};
 use ark_std::{start_timer, end_timer};
 
 use crate::{
@@ -27,7 +27,7 @@ use halo2_ecc::bn254::Fp12Chip;
 use halo2_ecc::bn254::pairing::PairingChip;
 
 use dotenv::dotenv;
-use ethers::providers::{Http, JsonRpcClient, Provider};
+use ethers::{providers::{Http, JsonRpcClient, Provider}, core::k256::elliptic_curve::generic_array::sequence::Lengthen};
 use ethers::types::Address;
 use rand::{rngs::OsRng, RngCore};
 use crate::subquery::types::AssignedStorageSubquery;
@@ -36,7 +36,8 @@ use crate::subquery::types::AssignedStorageSubquery;
 struct MyCircuitInput {
     task_response_digest_g2coords: [u8; 128],
     agg_sig_g2coords: [u8; 128],
-    g1_pubkey: [u8; 64],
+    signers_g1_pubkey: [u8; 64],
+    non_signers_addrs: [[u8; 64]; 3000],
     task_created_block: u64,
     quorum_g1_apk_x_slot: u64,
     quorum_g1_apk_y_slot: u64,
@@ -50,7 +51,8 @@ struct MyCircuitInput {
 struct MyCircuitVirtualInput<F: Field> {
     task_response_digest_g2coords: [u8; 128],
     agg_sig_g2coords: [u8; 128],
-    g1_pubkey: [u8; 64],
+    signers_g1_pubkey: [u8; 64],
+    non_signers_addrs: [[u8; 64]; 3000],
     bls_pubkey_registry_addr: AssignedValue<F>,
     bls_pubkey_compendium_addr: AssignedValue<F>,
     operator_to_g1_pubkey_x_slot: AssignedValue<F>,
@@ -78,6 +80,31 @@ fn vec_to_array64(vec: Vec<u8>) -> Result<[u8; 64], &'static str> {
     } else {
         Err("Vector does not have exactly 64 elements")
     }
+}
+
+
+fn vec_non_signers_convert<const N:usize>(vec: Vec<Vec<u8>>) -> Result<[[u8; 64]; N], &'static str> {
+    let mut result_vec = vec![];
+    for each in vec {
+        if each.len() == 64 {
+            let mut arr = [0u8; 64];
+            arr.copy_from_slice(&each);
+            result_vec.push(arr);
+        } else {
+            return Err("Vector does not have exactly 64 elements");
+        }
+    }
+
+    if result_vec.len() != N {
+        return Err("Resulting vector does not match the expected length");
+    }
+
+    let result_array: [[u8; 64]; N] = match result_vec.try_into() {
+        Ok(arr) => arr,
+        Err(_) => return Err("Conversion to array failed"),
+    };
+
+    Ok(result_array)
 }
 
 impl RawCircuitInput<Fr, MyCircuitVirtualInput<Fr>> for MyCircuitInput {
@@ -110,14 +137,30 @@ impl RawCircuitInput<Fr, MyCircuitVirtualInput<Fr>> for MyCircuitInput {
         let sk_all_operators_circuit_g1_apk = d0 * R2 + d1 * R3;
         let signature: G2Affine = G2Affine::from(rand_g2_point * sk_all_operators_circuit_g1_apk);
         let signature_g2_vec = vec_to_array(signature.to_raw_bytes()).unwrap();
-        let all_operators_circuit_g1_apk = G1Affine::from(G1Affine::generator() * sk_all_operators_circuit_g1_apk);
+        let mut all_operators_circuit_g1_apk = G1Affine::from(G1Affine::generator() * sk_all_operators_circuit_g1_apk);
         
         println!("all_operators_circuit_g1_apk {}", all_operators_circuit_g1_apk.to_raw_bytes().len());
+        
+        let mut non_signers_input: Vec<Vec<u8>> = vec![];
+        const NUM_NON_SIGNERS:usize = 3000;
+        for _ in 0..NUM_NON_SIGNERS {
+            let d0 = Fr::from_u64_digits(&[OsRng.next_u64(), OsRng.next_u64(), OsRng.next_u64(), OsRng.next_u64()]);
+            let d1 = Fr::from_u64_digits(&[OsRng.next_u64(), OsRng.next_u64(), OsRng.next_u64(), OsRng.next_u64()]);
+            // Convert to Montgomery form
+            let sk = d0 * R2 + d1 * R3;
+            // let signature: G2Affine = G2Affine::from(task_response_digest_bn254_g2 * sk);
+            let pubkey = G1Affine::from(G1Affine::generator() * sk);
+            non_signers_input.push(pubkey.to_raw_bytes());
+            all_operators_circuit_g1_apk = (all_operators_circuit_g1_apk + pubkey).into();
+            // signatures.push(signature);
+        }
 
+        let non_signers_converted = vec_non_signers_convert::<NUM_NON_SIGNERS>(non_signers_input).unwrap();
         MyCircuitInput {
             task_response_digest_g2coords: rand_g2_point_arr,
             agg_sig_g2coords: signature_g2_vec,
-            g1_pubkey: vec_to_array64(all_operators_circuit_g1_apk.to_raw_bytes()).unwrap(),
+            non_signers_addrs: non_signers_converted,
+            signers_g1_pubkey: vec_to_array64(all_operators_circuit_g1_apk.to_raw_bytes()).unwrap(),
             bls_pubkey_registry_addr: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             bls_pubkey_compendium_addr: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             operator_to_g1_pubkey_x_slot: 0,
@@ -133,7 +176,8 @@ impl RawCircuitInput<Fr, MyCircuitVirtualInput<Fr>> for MyCircuitInput {
         MyCircuitVirtualInput {
             task_response_digest_g2coords: self.task_response_digest_g2coords,
             agg_sig_g2coords: self.agg_sig_g2coords,
-            g1_pubkey: self.g1_pubkey,
+            signers_g1_pubkey: self.signers_g1_pubkey,
+            non_signers_addrs: self.non_signers_addrs,
             bls_pubkey_registry_addr: ctx.load_witness(encode_addr_to_field(&Address::from(self.bls_pubkey_registry_addr))),
             bls_pubkey_compendium_addr: ctx.load_witness(encode_addr_to_field(&Address::from(self.bls_pubkey_compendium_addr))),
             operator_to_g1_pubkey_x_slot: ctx.load_witness(Fr::from(self.operator_to_g1_pubkey_x_slot)),
@@ -189,8 +233,28 @@ impl<P: JsonRpcClient> AxiomCircuitScaffold<P, Fr> for MyCircuit {
         let task_response_digest_bn254_g2 =
         g2_chip.assign_point::<G2Affine>(builder.base.borrow_mut().main(0), task_response_digest_g2coords);
 
-        let g1_pubkey = G1Affine::from_raw_bytes(&inputs.g1_pubkey).unwrap();
-        let signers_g1_apk = g1_chip.assign_point::<G1Affine>(builder.base.borrow_mut().main(0), g1_pubkey);
+        let g1_pubkey = G1Affine::from_raw_bytes(&inputs.signers_g1_pubkey).unwrap();
+        let assigned_signers_g1_apk = g1_chip.assign_point::<G1Affine>(builder.base.borrow_mut().main(0), g1_pubkey);
+        let signers_g1_apk;
+
+        if !inputs.non_signers_addrs.is_empty() {
+            let all_non_signers: Vec<_> = inputs
+                .non_signers_addrs
+                .into_iter()
+                .map(|point| g1_chip.assign_point::<G1Affine>(builder.base.borrow_mut().main(0), G1Affine::from_raw_bytes(&point).unwrap()))
+                .collect();
+
+            let nonsigners_g1_apk = g1_chip.sum::<G1Affine>(builder.base.borrow_mut().main(0), all_non_signers);
+            
+            signers_g1_apk = g1_chip.sub_unequal(
+                builder.base.borrow_mut().main(0),
+                assigned_signers_g1_apk,
+                nonsigners_g1_apk,
+                true,
+            );
+        } else {
+            signers_g1_apk = assigned_signers_g1_apk;
+        }
 
         let multi_paired = pairing_chip.multi_miller_loop(
             builder.base.borrow_mut().main(0),
